@@ -22,15 +22,17 @@ public class algorithm {
         g.addVertex(root);
         idToVertex.put(root.load_id, root);
 
+        System.out.println("Doing some pre-solving...");
         LinkedList<Load> feasibleLoads = getFeasibleLoads(r.startTime, r.maxDestTime, r.startLat, r.startLon, loads);
-        System.out.println("Done!");
+        loads =feasibleLoads;
         // initially add each feasible load as a neighbor of the root
-        for (Load l : feasibleLoads) {
+        for (Load l : loads) {
             loadVertex currentVertex = new loadVertex(l.load_id);
             g.addVertex(currentVertex);
             idToVertex.put(currentVertex.load_id, currentVertex);
 
             DefaultWeightedEdge edge = g.addEdge(root, currentVertex);
+
 
             // calculate profit/time
             double profitTime = calculateProfitTime(r.startLat, r.startLon, l);
@@ -52,6 +54,7 @@ public class algorithm {
             ArrayList<Double> profitOfSolutions = new ArrayList<>();
             ArrayList<LinkedList> listOfSolutions = new ArrayList<>();
 
+            System.out.println("Deploying an army of 5 ants!");
             // deploy 5 ants to generate 5 stochastic solutions
             for (int i = 0; i < 5; i++) {
                 LinkedList<Integer> solution = new LinkedList<>();
@@ -72,8 +75,9 @@ public class algorithm {
                 listOfSolutions.add(i, solution);
             }
 
+            System.out.println("Comparing solutions...");
             // compare profits of solutions
-            for (int j = 0; j < 10 - j; j++) {
+            for (int j = 0; j < 5; j++) {
                 double max = profitOfSolutions.get(0);
                 int maxIndex = 0;
 
@@ -90,12 +94,16 @@ public class algorithm {
                 }
 
                 // update pheromones
-                // multiply the weight of every edge on solution by 1.50 - (j/100)
+                // multiply the weight of every edge on solution by 1.50 - (j/10)
+                System.out.println("Updating pheromones");
                 LinkedList<Integer> solution = listOfSolutions.get(maxIndex);
                 for (int k = 0; k < solution.size() - 1; k++) {
-                    g.setEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k + 1)))
-                            , g.getEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k + 1))))
-                                    * (1.50 - (double) j / 100));
+                    loadVertex v1 = idToVertex.get(solution.get(k));
+                    loadVertex v2 = idToVertex.get(solution.get(k+1));
+                    DefaultWeightedEdge e = g.getEdge(v1,v2);
+                    if (e != null) {
+                        g.setEdgeWeight(e, g.getEdgeWeight(e) * (1.50 - (double) j / 10));
+                    }
                 }
 
                 // remove max element and repeat
@@ -103,7 +111,6 @@ public class algorithm {
                 listOfSolutions.remove(maxIndex);
             }
             o++;
-            System.out.println(o);
         }
         return optimalSolution;
     }
@@ -126,6 +133,17 @@ public class algorithm {
         double time = getTime(displacement);
         double profitTime = profit / time;
         return profitTime;
+    }
+
+    private Boolean isLegal(int load_id, Request r){
+        Load l = idToLoad.get(load_id);
+        double hoursNeeded = getDistance(l.lat1, l.lon1,l.lat2, l.lon2)/55.0;
+
+        // load can't be delivered in time
+        if (l.startTime.plusHours((long)hoursNeeded).isAfter(r.maxDestTime)){
+            return false;
+        }
+        return true;
     }
 
     // iterates over neighbors of currentNode
@@ -152,7 +170,7 @@ public class algorithm {
                 double p = g.getEdgeWeight(e)/ totalWeight;
 
                 // the edge is picked
-                if(StdRandom.bernoulli(p)){
+                if(isLegal(v.load_id, r) && StdRandom.bernoulli(p)){
                     n++;
                     solution.add(v.load_id);
 
@@ -165,10 +183,11 @@ public class algorithm {
                     LocalDateTime loadEndtime = idToLoad.get(v.load_id).startTime.plusHours((long)hoursNeeded);
                     LinkedList<Load> feasibleLoads = getFeasibleLoads(loadEndtime, r.maxDestTime,
                             idToLoad.get(v.load_id).lat2,idToLoad.get(v.load_id).lon2, loads);
+                    loads = feasibleLoads;
 
                     // add feasible loads as vertices to g
-                    for (Load l: feasibleLoads){
-                        // if vertex for l is not in g, then addvertex will not do anything.
+                    for (Load l: loads){
+                        // if vertex for l is in g, then addvertex will not do anything.
                         loadVertex currentVertex = new loadVertex(l.load_id);
                         g.addVertex(currentVertex);
                         idToVertex.put(currentVertex.load_id, currentVertex);
@@ -176,6 +195,11 @@ public class algorithm {
 
                         // calculate profit/time
                         double profitTime = calculateProfitTime(r.startLat, r.startLon, l);
+
+                        // non profitable loads are not feasible
+                        if (profitTime < 0){
+                            break;
+                        }
 
                         // initially the edge weight is profitTime
                         g.setEdgeWeight(edge, profitTime);
@@ -191,30 +215,20 @@ public class algorithm {
         }
     }
 
-    // remove unfeasible loads
-    // if driver can reach from current location to the starting point of the load in time
-    // and if the driver can complete the delivery before his endtime
-    // then add loads to feasible loads
+    // remove completely unfeasible loads
+    // ie the loads which have a starting time that has passed or after end of shift
     private LinkedList<Load> getFeasibleLoads(LocalDateTime startTime, LocalDateTime endTime, double startLat,
                                                      double startLon, LinkedList<Load> loads){
-        System.out.println("Finding all feasible loads...");
-        System.out.println("If the driver can make it in time and finish the delivery before end of shift, load is feasible.");
         LinkedList<Load> feasibleLoads = new LinkedList<>();
         for (int i = 0; i < loads.size(); i++){
-            double timeNeeded = getTime(getDistance(startLat, startLon, loads.get(i).lat1, loads.get(i).lon1));
-
-            // if driver can make it in time to pick up
-            if (startTime.plusHours((long) timeNeeded).isBefore(loads.get(i).startTime)){
-
-                // if driver can complete delivery before end of shift
-                timeNeeded += getTime(getDistance(loads.get(i).lat1, loads.get(i).lon1, loads.get(i).lat2, loads.get(i).lon2));
-                if(startTime.plusHours((long) timeNeeded).isBefore(endTime)){
-                    // driver can deliver in time. load is feasible
+            if(!loads.get(i).startTime.isBefore(startTime)){
+                double hoursNeeded = getDistance(loads.get(i).lat1, loads.get(i).lon1,loads.get(i).lat2
+                        , loads.get(i).lon2)/55.0;
+                if(!loads.get(i).startTime.plusHours((long) hoursNeeded).isAfter(endTime)){
                     feasibleLoads.add(loads.get(i));
                 }
             }
         }
-        System.out.println("Done!");
 
         return feasibleLoads;
     }

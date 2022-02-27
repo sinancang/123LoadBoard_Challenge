@@ -42,10 +42,10 @@ public class tripRequestParser {
 
             jason += "    {" + "        \n \"input_trip_id\": " + requests.get(i).id + ",\n";
             jason += "        \"load_ids\": [";
-            for(int j = 0; j < optimalSolution.size() - 1;j++){
+            for(int j = 0; j < optimalSolution.size() ;j++){
                 jason += " " + optimalSolution.get(j) + ",";
             }
-            jason += " " + optimalSolution.get(optimalSolution.size() - 1) + " ]\n    },";
+            jason += " ]\n    },";
 
         }
         jason += "]";
