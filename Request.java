@@ -2,7 +2,7 @@ package generateTrip;
 import java.time.*;
 
 public class Request {
-    private final int id;
+    public final int id;
     public final double startLat;
     public final double startLon;
     public final LocalDateTime startTime;

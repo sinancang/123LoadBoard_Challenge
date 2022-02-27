@@ -9,7 +9,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class tripRequestParser {
-    public final HashMap<Integer, Load> loads = new HashMap<>();
+    private LinkedList<Load> loads = new LinkedList<>();
     private LinkedList<Request> requests = new LinkedList<>();
 
     // sets up the trip request handler
@@ -22,13 +22,27 @@ public class tripRequestParser {
     // returns json for trips
     public String getTrips(){
         JSONArray result = new JSONArray();
+        String jason = "[\n";
 
         // handle requests one by one
         for (int i = 0; i < requests.size(); i++){
-            // call ant colony
-        }
+            LinkedList<Integer> optimalSolution = new LinkedList<>();
 
-        return "";
+            // call ant colony
+            algorithm a = new algorithm();
+            optimalSolution = a.antColony(loads, requests.get(i));
+
+            jason += "    {" + "        \n \"input_trip_id\": " + requests.get(i).id + ",\n";
+            jason += "        \"load_ids\": [";
+            for(int j = 0; j < optimalSolution.size() - 1;j++){
+                jason += " " + optimalSolution.get(j) + ",";
+            }
+            jason += " " + optimalSolution.get(optimalSolution.size() - 1) + " ]\n    },";
+
+        }
+        jason += "]";
+
+        return jason;
     }
 
     // parse list of loads
@@ -58,7 +72,7 @@ public class tripRequestParser {
                         time);
 
                 // add to list of loads
-                loads.put(l.load_id, l);
+                loads.add(l);
             }
         } catch (FileNotFoundException e) {
             e.printStackTrace();
