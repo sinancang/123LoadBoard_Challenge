@@ -11,16 +11,19 @@ import org.jgrapht.util.ArrayUtil;
 public class algorithm {
     private final Map<Integer, loadVertex> idToVertex =
             new LinkedHashMap<Integer, loadVertex>();
+    private Map<Integer, Load> idToLoad;
 
     // convert problem into a graph
-    public LinkedList<Integer> antColony(LinkedList<Load> loads, Request r) {
+    public LinkedList<Integer> antColony(LinkedList<Load> loads, Request r, Map<Integer, Load> idToLoad) {
+        System.out.println("We'll attack this optimization problem with ants!");
+        this.idToLoad = idToLoad;
         Graph<loadVertex, DefaultWeightedEdge> g = new SimpleDirectedWeightedGraph<>(DefaultWeightedEdge.class);
         loadVertex root = new loadVertex(-1);
         g.addVertex(root);
         idToVertex.put(root.load_id, root);
 
         LinkedList<Load> feasibleLoads = getFeasibleLoads(r.startTime, r.maxDestTime, r.startLat, r.startLon, loads);
-
+        System.out.println("Done!");
         // initially add each feasible load as a neighbor of the root
         for (Load l : feasibleLoads) {
             loadVertex currentVertex = new loadVertex(l.load_id);
@@ -32,6 +35,11 @@ public class algorithm {
             // calculate profit/time
             double profitTime = calculateProfitTime(r.startLat, r.startLon, l);
 
+            // if profitTime is negative, break
+            if (profitTime < 0){
+                break;
+            }
+
             // initially the edge weight is profitTime
             g.setEdgeWeight(edge, profitTime);
         }
@@ -42,26 +50,26 @@ public class algorithm {
         int o = 0;
         while(o < 10) {
             ArrayList<Double> profitOfSolutions = new ArrayList<>();
-            ArrayList<LinkedList> list = new ArrayList<>();
+            ArrayList<LinkedList> listOfSolutions = new ArrayList<>();
 
-            // deploy ten ants to generate 10 stochastic solutions
-            for (int i = 0; i < 10; i++) {
+            // deploy 5 ants to generate 5 stochastic solutions
+            for (int i = 0; i < 5; i++) {
                 LinkedList<Integer> solution = new LinkedList<>();
-                getSolution(g, root, solution, loads, r);
+                getSolution(g, root, solution, loads, r,0);
 
                 // calculate solution profit
                 double moneyMade = 0;
-                for (int j : solution) {
-                    moneyMade += loads.get(j).amount;
+                for (int j: solution) {
+                    moneyMade += idToLoad.get(j).amount;
                 }
                 double cost = 0;
                 for (int j : solution) {
-                    cost += (getDistance(r.startLat, r.startLon, loads.get(j).lat1, loads.get(j).lon1)
-                            + getDistance(loads.get(j).lat1, loads.get(j).lat1, loads.get(j).lat2, loads.get(j).lon2)) * 044;
+                    cost += (getDistance(r.startLat, r.startLon, idToLoad.get(j).lat1, idToLoad.get(j).lon1)
+                            + getDistance(idToLoad.get(j).lat1, idToLoad.get(j).lat1, idToLoad.get(j).lat2, idToLoad.get(j).lon2)) * 044;
                 }
 
-                profitOfSolutions.set(i, moneyMade - cost);
-                list.set(i, solution);
+                profitOfSolutions.add(i, moneyMade - cost);
+                listOfSolutions.add(i, solution);
             }
 
             // compare profits of solutions
@@ -76,14 +84,14 @@ public class algorithm {
 
                         // if this is the last round of ants, we've found our approximation
                         if (o == 9){
-                            optimalSolution = list.get(i);
+                            optimalSolution = listOfSolutions.get(i);
                         }
                     }
                 }
 
                 // update pheromones
                 // multiply the weight of every edge on solution by 1.50 - (j/100)
-                LinkedList<Integer> solution = list.get(maxIndex);
+                LinkedList<Integer> solution = listOfSolutions.get(maxIndex);
                 for (int k = 0; k < solution.size() - 1; k++) {
                     g.setEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k + 1)))
                             , g.getEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k + 1))))
@@ -92,9 +100,10 @@ public class algorithm {
 
                 // remove max element and repeat
                 profitOfSolutions.remove(maxIndex);
-                list.remove(maxIndex);
+                listOfSolutions.remove(maxIndex);
             }
             o++;
+            System.out.println(o);
         }
         return optimalSolution;
     }
@@ -124,7 +133,10 @@ public class algorithm {
     // picks one neighbor to move to depending on edge weight
     // calculates feasible neighbors of new vertex
     // adds feasible loads as neighbors
-    private void getSolution(Graph g, loadVertex currentNode, LinkedList<Integer> solution, LinkedList<Load> loads, Request r){
+    private void getSolution(Graph g, loadVertex currentNode, LinkedList<Integer> solution, LinkedList<Load> loads, Request r, int n){
+        if (n == 5){
+            return;
+        }
         // get all neighbors of vertex
         Set<DefaultWeightedEdge> edges = g.outgoingEdgesOf(currentNode);
 
@@ -141,17 +153,18 @@ public class algorithm {
 
                 // the edge is picked
                 if(StdRandom.bernoulli(p)){
+                    n++;
                     solution.add(v.load_id);
 
                     // again, feasibility check
                     // start time is load start time plus time needed
                     // endtime remains the same
-                    double dist = getDistance(loads.get(v.load_id).lat1, loads.get(v.load_id).lon1,
-                            loads.get(v.load_id).lat2, loads.get(v.load_id).lon2);
+                    double dist = getDistance(idToLoad.get(v.load_id).lat1,idToLoad.get(v.load_id).lon1,
+                            idToLoad.get(v.load_id).lat2, idToLoad.get(v.load_id).lon2);
                     double hoursNeeded = dist / 55.0;
-                    LocalDateTime loadEndtime = loads.get(v.load_id).startTime.plusHours((long)hoursNeeded);
+                    LocalDateTime loadEndtime = idToLoad.get(v.load_id).startTime.plusHours((long)hoursNeeded);
                     LinkedList<Load> feasibleLoads = getFeasibleLoads(loadEndtime, r.maxDestTime,
-                            loads.get(v.load_id).lat2,loads.get(v.load_id).lon2, loads);
+                            idToLoad.get(v.load_id).lat2,idToLoad.get(v.load_id).lon2, loads);
 
                     // add feasible loads as vertices to g
                     for (Load l: feasibleLoads){
@@ -169,8 +182,10 @@ public class algorithm {
                     }
 
                     // recurse to find another load to add to solution
-                    getSolution(g, v, solution, loads, r);
-                    break;
+                    getSolution(g, v, solution, loads, r, n);
+
+                    // break to look no further for a choice
+                    return;
                 }
             }
         }
@@ -182,6 +197,8 @@ public class algorithm {
     // then add loads to feasible loads
     private LinkedList<Load> getFeasibleLoads(LocalDateTime startTime, LocalDateTime endTime, double startLat,
                                                      double startLon, LinkedList<Load> loads){
+        System.out.println("Finding all feasible loads...");
+        System.out.println("If the driver can make it in time and finish the delivery before end of shift, load is feasible.");
         LinkedList<Load> feasibleLoads = new LinkedList<>();
         for (int i = 0; i < loads.size(); i++){
             double timeNeeded = getTime(getDistance(startLat, startLon, loads.get(i).lat1, loads.get(i).lon1));
@@ -197,6 +214,7 @@ public class algorithm {
                 }
             }
         }
+        System.out.println("Done!");
 
         return feasibleLoads;
     }
