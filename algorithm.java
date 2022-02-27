@@ -1,28 +1,32 @@
 package generateTrip;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Set;
+import java.util.*;
 
 import edu.princeton.cs.introcs.StdRandom;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.*;
+import org.jgrapht.util.ArrayUtil;
 
 public class algorithm {
+    private final Map<Integer, loadVertex> idToVertex =
+            new LinkedHashMap<Integer, loadVertex>();
 
     // convert problem into a graph
     public void antColony(LinkedList<Load> loads, Request r){
         Graph<loadVertex, DefaultWeightedEdge> g = new SimpleDirectedWeightedGraph<>(DefaultWeightedEdge.class);
         loadVertex root = new loadVertex(-1);
         g.addVertex(root);
+        idToVertex.put(root.load_id, root);
+
         LinkedList<Load> feasibleLoads = getFeasibleLoads(r.startTime, r.maxDestTime,r.startLat, r.startLon, loads);
 
         // initially add each feasible load as a neighbor of the root
         for (Load l: feasibleLoads){
             loadVertex currentVertex = new loadVertex(l.load_id);
             g.addVertex(currentVertex);
+            idToVertex.put(currentVertex.load_id, currentVertex);
+
             DefaultWeightedEdge edge = g.addEdge(root, currentVertex);
 
             // calculate profit/time
@@ -32,8 +36,8 @@ public class algorithm {
             g.setEdgeWeight(edge, profitTime);
         }
 
-        double[] profitOfSolutions = new double[100];
-        LinkedList[] list = new LinkedList[100];
+        ArrayList<Double> profitOfSolutions = new ArrayList<>();
+        ArrayList<LinkedList> list = new ArrayList<>();
 
         for (int i = 0; i < 100; i++) {
             LinkedList<Integer> solution = new LinkedList<>();
@@ -50,22 +54,32 @@ public class algorithm {
                         +getDistance(loads.get(j).lat1, loads.get(j).lat1, loads.get(j).lat2, loads.get(j).lon2))*044;
             }
 
-            profitOfSolutions[i] = moneyMade - cost;
-            list[i] = solution;
+            profitOfSolutions.set(i, moneyMade - cost);
+            list.set(i, solution);
         }
 
-        // compare profits
-        for (int j = 0; j < 100; j++) {
-            double max = profitOfSolutions[0];
+        // remove the max index each time
+        for (int j = 0; j < 100 - j; j++) {
+            double max = profitOfSolutions.get(0);
             int maxIndex = 0;
 
-            for (int i = 1; i < profitOfSolutions.length; i++) {
-                if (profitOfSolutions[i] > max) {
+            for (int i = 1; i < profitOfSolutions.size(); i++) {
+                if (profitOfSolutions.get(i) > max) {
                     maxIndex = i;
-                    max = profitOfSolutions[i];
+                    max = profitOfSolutions.get(i);
                 }
             }
             // multiply the weight of every edge on solution by 1.50 - (j/100)
+            LinkedList<Integer> solution = list.get(maxIndex);
+            for (int k = 0 ; k < solution.size()-1; k++){
+                g.setEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k+1)))
+                        ,g.getEdgeWeight(g.getEdge(idToVertex.get(solution.get(k)), idToVertex.get(solution.get(k+1))))
+                                *(1.50 - (double)j/100));
+            }
+
+            // remove max element and repeat
+            profitOfSolutions.remove(maxIndex);
+            list.remove(maxIndex);
         }
 
     }
@@ -129,6 +143,7 @@ public class algorithm {
                         // if vertex for l is not in g, then addvertex will not do anything.
                         loadVertex currentVertex = new loadVertex(l.load_id);
                         g.addVertex(currentVertex);
+                        idToVertex.put(currentVertex.load_id, currentVertex);
                         DefaultWeightedEdge edge = (DefaultWeightedEdge) g.addEdge(v, currentVertex);
 
                         // calculate profit/time
